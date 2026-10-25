@@ -22,7 +22,7 @@ Documentar el direccionamiento IPv4 utilizado en el laboratorio de autenticació
 | Puerto de accounting | UDP 1813 |
 | Dirección NAS de R1 | 10.21.40.1 |
 | Dirección NAS de SW1 | 10.21.40.2 |
-| Dirección de origen de las pruebas SSH | 10.21.40.20 (Windows10-Usuario-1) |
+| Dirección de origen de las pruebas SSH | 10.21.40.20 |
 
 ## Enrutamiento
 
