@@ -4,6 +4,25 @@ Laboratorio de seguridad de red desarrollado en **GNS3** utilizando **Cisco IOS*
 
 El objetivo principal es implementar **autenticación, autorización y accounting (AAA)** centralizados mediante RADIUS (NPS), con segmentación de privilegios por grupos de Active Directory (niveles 0, 5 y 10), acceso SSH restringido y registro de todos los eventos de acceso.
 
+## Índice de la documentación
+
+1. [Objetivo y alcance](#objetivo-y-alcance)
+2. [Video de demostración](#video-de-demostración)
+3. [Topología](#topología)
+4. [Direccionamiento IP](#direccionamiento-ip)
+5. [Configuración del Router (R1)](#configuración-del-router-r1)
+6. [Configuración del Switch (SW1)](#configuración-del-switch-sw1)
+7. [Servidor (Windows Server 2019)](#servidor-windows-server-2019)
+8. [Procedimiento de implementación](#procedimiento-de-implementación)
+9. [Evidencias y pruebas realizadas](#evidencias-y-pruebas-realizadas)
+10. [Validación y resultados](#validación-y-resultados)
+11. [Conclusiones y limitaciones](#conclusiones-y-limitaciones)
+12. [Documentos de respaldo](#documentos-de-respaldo)
+
+## Objetivo y alcance
+
+Implementar AAA centralizado en **R1 y SW1** usando **RADIUS/NPS**, con cuentas de **Active Directory** y privilegios diferenciados (0, 5 y 10). El alcance incluye conectividad IPv4, clientes RADIUS, políticas de red, acceso SSH, autorización de sesión EXEC y registro de eventos. **No se debe confundir la asignación de un nivel de privilegio con la demostración de autorización individual de todos los comandos**: esta última requiere pruebas específicas.
+
 ## Video de demostración
 
 > (https://www.youtube.com/watch?v=-24O1OOiTzQ)
@@ -66,9 +85,11 @@ Red: `10.21.40.0/24`
 | NAS de SW1 | 10.21.40.2 |
 | Origen de pruebas SSH | 10.21.40.20 |
 
-La documentación completa se encuentra en:
+### Verificación de conectividad y DNS
 
-[Direccionamiento/Direccionamiento.md](Direccionamiento/Direccionamiento.md)
+Todos los equipos documentados pertenecen a `10.21.40.0/24`. R1 utiliza FastEthernet0/0 como interfaz de la red; SW1 utiliza VLAN 1 para administración y `10.21.40.1` como puerta de enlace. El cliente Windows 10 utiliza `10.21.40.10` como DNS del dominio. Antes de probar RADIUS, se comprueba conectividad entre el servidor NPS y las IP de administración de los dispositivos.
+
+[Plan de direccionamiento ampliado](Direccionamiento/Direccionamiento.md)
 
 ---
 
@@ -153,7 +174,107 @@ Las evidencias documentan, entre otras, las siguientes validaciones:
 - Resultado de pruebas `test aaa group` (autenticación exitosa, privilegios 0/5/10).
 - Conexión SSH al router R1 desde Windows.
 
-[Ver documento de evidencias](Evidencias/Evidencias.pdf) *(si aplica)*
+[Consultar las capturas y pruebas originales en el PDF de evidencias](Evidencias/Evidencias.pdf)
+
+---
+
+## Procedimiento de implementación
+
+### 1. Preparación de la red
+
+1. Construir la topología de GNS3 con R1, SW1, Windows Server 2019 y Windows 10.
+2. Configurar las interfaces según la tabla de direccionamiento y verificar que los equipos pertenezcan a la subred `10.21.40.0/24`.
+3. Establecer la puerta de enlace de administración del switch hacia R1.
+4. Configurar en el cliente Windows 10 el DNS del servidor `10.21.40.10`, necesario para resolver recursos del dominio.
+
+### 2. Active Directory
+
+1. Preparar el dominio `seguridad.lab` en Windows Server 2019.
+2. Crear la unidad organizativa `OU_RADIUS`.
+3. Crear los grupos `GRP_RADIUS_NIVEL0`, `GRP_RADIUS_NIVEL5` y `GRP_RADIUS_NIVEL10`.
+4. Crear las cuentas `usuario_nivel0`, `usuario_nivel5` y `usuario_nivel10` y asociarlas a sus respectivos grupos.
+
+**Propósito:** mantener las identidades y la pertenencia a grupos en un único directorio, en lugar de administrar una cuenta distinta en cada equipo Cisco.
+
+### 3. Network Policy Server (NPS)
+
+1. Instalar y habilitar el servicio NPS en Windows Server.
+2. Registrar los clientes RADIUS `R1_ROUTER` (`10.21.40.1`) y `SW1_SWITCH` (`10.21.40.2`).
+3. Configurar para cada cliente el secreto compartido correspondiente **sin publicarlo en el repositorio**.
+4. Crear las políticas `POL_RADIUS_NIVEL0`, `POL_RADIUS_NIVEL5` y `POL_RADIUS_NIVEL10` y vincular sus condiciones a los grupos de Active Directory.
+5. Configurar los atributos de autorización que entregan el nivel de privilegio previsto para cada grupo.
+6. Habilitar el registro de solicitudes y revisar los eventos en los registros de NPS.
+
+### 4. Configuración AAA y SSH en Cisco
+
+1. Habilitar AAA mediante `aaa new-model`.
+2. Registrar el servidor NPS (`10.21.40.10`) y los puertos RADIUS de autenticación y accounting.
+3. Aplicar la lista de autenticación `RAD_LOGIN` con RADIUS y alternativa local.
+4. Aplicar la lista de autorización de sesión `RAD_EXEC` con RADIUS y alternativa local.
+5. Configurar `RAD_ACCOUNT` para accounting EXEC con registros `start-stop`.
+6. Habilitar SSH v2 y asociar las listas AAA a las líneas de acceso remoto.
+7. Conservar el usuario local `adminlocal` como mecanismo alternativo de administración.
+
+**Referencia verificable:** las configuraciones completas, con secretos ocultos, se encuentran en los archivos [R1](Show%20running-config/Show%20running-config%20Router%20R1.txt) y [SW1](Show%20running-config/Show%20running-config%20Switch%20SW1.txt). Los pasos anteriores describen la secuencia funcional, no sustituyen las configuraciones guardadas.
+
+### 5. Pruebas desde Windows 10
+
+Abrir CMD o PowerShell y conectarse al router o switch por SSH con cada cuenta:
+
+```powershell
+ssh usuario_nivel0@10.21.40.1
+ssh usuario_nivel5@10.21.40.1
+ssh usuario_nivel10@10.21.40.1
+
+ssh usuario_nivel0@10.21.40.2
+ssh usuario_nivel5@10.21.40.2
+ssh usuario_nivel10@10.21.40.2
+```
+
+> Cada comando corresponde a una sesión distinta; cerrar la sesión anterior antes de probar la siguiente. No publicar contraseñas.
+
+En cada sesión se verifican los privilegios y los comandos visibles:
+
+```text
+show privilege
+show ?
+```
+
+El resultado esperado del primer comando es el nivel correspondiente al usuario autenticado. `show ?` permite observar la ayuda disponible, pero por sí solo **no prueba** que un comando prohibido sea rechazado por una política de autorización.
+
+### 6. Registros de accounting
+
+Consultar los registros de NPS en Windows Server (directorio utilizado en la práctica: `C:\Windows\System32\LogFiles`). Correlacionar, cuando el registro lo permita, la cuenta, el cliente RADIUS, el resultado y el momento de la solicitud. Distinguir los registros de autenticación de los registros de inicio/cierre de sesión.
+
+---
+
+## Validación y resultados
+
+| Comprobación | Dispositivo / sistema | Evidencia documentada |
+|---|---|---|
+| Topología y direccionamiento | GNS3 / Windows | Diagramas y configuración IPv4 |
+| Usuarios y grupos | Active Directory | Cuentas y grupos de niveles 0, 5 y 10 |
+| Clientes y políticas | NPS | Clientes R1/SW1 y políticas de red |
+| Autenticación RADIUS | Cisco / NPS | Pruebas `test aaa group` con autenticación satisfactoria |
+| Niveles de privilegio | R1 y SW1 | Sesiones SSH y `show privilege` para niveles 0, 5 y 10 |
+| Comandos visibles | R1 y SW1 | `show ?` en sesiones de usuario |
+| Auditoría | NPS | Registros de eventos de acceso |
+
+**Interpretación:** la evidencia de niveles de privilegio respalda la autorización de sesión EXEC. La autorización de comandos específicos solo debe considerarse validada cuando se haya registrado la ejecución permitida o denegada de esos comandos; no se presume por el nivel numérico.
+
+## Conclusiones y limitaciones
+
+La práctica documenta una arquitectura AAA centralizada en la que NPS consulta las identidades de Active Directory y R1/SW1 actúan como clientes RADIUS. Las pruebas muestran la autenticación y la diferenciación de niveles de privilegio. El accounting proporciona trazabilidad de las solicitudes y sesiones registradas por NPS.
+
+**Limitación documental:** las capturas detalladas del servidor y de las pruebas se conservan en PDF. Para visualizarlas de forma individual dentro de GitHub, será necesario exportar las páginas/capturas originales a PNG y añadirlas como imágenes Markdown en las secciones correspondientes. No se han creado capturas nuevas ni se han atribuido resultados no verificados.
+
+## Documentos de respaldo
+
+- [Evidencias completas en PDF](Evidencias/Evidencias.pdf).
+- [Configuración visual de Windows Server en PDF](Configuracion%20windows%20server/Configuracion%20windows%20server%20.pdf).
+- [Plan de direccionamiento](Direccionamiento/Direccionamiento.md).
+- [Configuración sanitizada de R1](Show%20running-config/Show%20running-config%20Router%20R1.txt).
+- [Configuración sanitizada de SW1](Show%20running-config/Show%20running-config%20Switch%20SW1.txt).
 
 ---
 
